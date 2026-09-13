@@ -13,7 +13,6 @@ class VideoComparator(
     val preferredAudio = audioPreferences.preferredAudioLanguages().get()
 
     override fun compare(v1: Video, v2: Video): Int {
-
         // 1. Check for preferred quality
         val v1QualityMatch = v1.quality.contains(preferredQuality)
         val v2QualityMatch = v2.quality.contains(preferredQuality)
