@@ -133,7 +133,6 @@ fun PlayerControls(
     val isLoadingEpisode by viewModel.isLoadingEpisode.collectAsState()
     val isStopped by viewModel.isStopped.collectAsState()
     val duration by viewModel.duration.collectAsState()
-    val position by viewModel.pos.collectAsState()
     val paused by viewModel.paused.collectAsState()
     val gestureSeekAmount by viewModel.gestureSeekAmount.collectAsState()
     val doubleTapSeekAmount by viewModel.doubleTapSeekAmount.collectAsState()
@@ -487,54 +486,28 @@ fun PlayerControls(
                         val invertDuration by playerPreferences.invertDuration().collectAsState()
                         val readAhead by viewModel.readAhead.collectAsState()
                         val preciseSeeking by gesturePreferences.playerSmoothSeek().collectAsState()
+                        val position by viewModel.pos.collectAsState()
 
                         var wasPlayerAlreadyPause by remember { mutableStateOf(false) }
-                        var sliderPosition by remember { androidx.compose.runtime.mutableFloatStateOf(position) }
-                        var lastTargetSeekPos by remember { mutableStateOf<Float?>(null) }
-
-                        LaunchedEffect(position, seekPosition, isSeekingUI) {
-                            if (isSeekingUI) {
-                                sliderPosition = seekPosition
-                            } else {
-                                val target = lastTargetSeekPos
-                                if (target != null) {
-                                    if (kotlin.math.abs(position - target) > 1.5f) {
-                                        sliderPosition = target
-                                    } else {
-                                        sliderPosition = position
-                                        lastTargetSeekPos = null
-                                    }
-                                } else {
-                                    sliderPosition = position
-                                }
-                            }
-                        }
-
-                        LaunchedEffect(isSeekingUI) {
-                            if (!isSeekingUI && lastTargetSeekPos != null) {
-                                kotlinx.coroutines.delay(1000)
-                                lastTargetSeekPos = null
-                            }
-                        }
+                        var scrubbingPosition by remember { mutableStateOf<Float?>(null) }
 
                         SeekbarWithTimers(
-                            position = sliderPosition,
+                            position = scrubbingPosition ?: position,
                             duration = duration,
                             readAheadValue = readAhead,
-                            onValueChange = {
-                                if (!viewModel.isSeekingUI.value) {
+                            onValueChange = { newPos ->
+                                if (scrubbingPosition == null) {
                                     wasPlayerAlreadyPause = viewModel.paused.value
                                     viewModel.pause()
                                     viewModel.updateIsSeeking(true)
                                 }
-                                sliderPosition = it
-                                lastTargetSeekPos = it
-                                viewModel.updateSeekPos(it)
-                                viewModel.scrubSeekTo(it.toInt(), false)
+                                scrubbingPosition = newPos
+                                viewModel.updateSeekPos(newPos)
+                                viewModel.scrubSeekTo(newPos.toInt(), false)
                             },
                             onValueChangeFinished = {
-                                val target = sliderPosition
-                                lastTargetSeekPos = target
+                                val target = scrubbingPosition ?: position
+                                scrubbingPosition = null
                                 viewModel.updateSeekPos(target)
                                 viewModel.updateIsSeeking(false)
                                 viewModel.seekTo(target.toInt(), preciseSeeking)
