@@ -111,6 +111,7 @@ import eu.kanade.tachiyomi.ui.anime.EpisodeList
 import eu.kanade.tachiyomi.util.lang.formatTime
 import eu.kanade.tachiyomi.util.system.CoverColorObserver
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -1360,7 +1361,7 @@ private fun EpisodeItemWrapper(
     showFileSize: Boolean,
     showEpisodeSummary: Boolean,
     showEpisodeThumbnail: Boolean,
-    fillerEpisodes: Set<Float>,
+    fillerEpisodes: ImmutableSet<Float>,
     isAnyEpisodeSelected: Boolean,
     episodeSwipeStartAction: LibraryPreferences.EpisodeSwipeAction,
     episodeSwipeEndAction: LibraryPreferences.EpisodeSwipeAction,
@@ -1631,7 +1632,7 @@ private fun LazyListScope.sharedEpisodeItems(
     showEpisodeSummary: Boolean,
     showEpisodeThumbnail: Boolean,
     episodes: List<EpisodeList>,
-    fillerEpisodes: Set<Float>,
+    fillerEpisodes: ImmutableSet<Float>,
     isAnyEpisodeSelected: Boolean,
     episodeSwipeStartAction: LibraryPreferences.EpisodeSwipeAction,
     episodeSwipeEndAction: LibraryPreferences.EpisodeSwipeAction,
