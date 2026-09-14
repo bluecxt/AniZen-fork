@@ -1022,6 +1022,10 @@ class Downloader(
         }
     }
 
+    private val CIPHER_POOL = ThreadLocal.withInitial {
+        javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+    }
+
     private suspend fun nativeHlsDownload(download: Download, sandboxDir: File, filename: String): UniFile {
         val video = download.video!!
         val client = networkHelper.downloadClient
@@ -1117,7 +1121,7 @@ class Downloader(
                                 if (secretKey != null) {
                                     val seqNum = mediaSequence + seg.first
                                     val ivBytes = java.nio.ByteBuffer.allocate(16).putLong(8, seqNum.toLong()).array()
-                                    val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+                                    val cipher = CIPHER_POOL.get()
                                     cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, javax.crypto.spec.IvParameterSpec(ivBytes))
                                     data = cipher.doFinal(data)
                                 }
