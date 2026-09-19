@@ -924,7 +924,9 @@ class PlayerActivity : BaseActivity() {
 
             // other keys should be bound by the user in input.conf ig
             else -> {
-                event?.let { player.onKey(it) }
+                // ANZ -->
+                if (!isTextInputActive()) event?.let { player.onKey(it) }
+                // ANZ <--
                 super.onKeyDown(keyCode, event)
             }
         }
@@ -932,7 +934,9 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (player.onKey(event!!)) return true
+        // ANZ -->
+        if (!isTextInputActive() && player.onKey(event!!)) return true
+        // ANZ <--
         return super.onKeyUp(keyCode, event)
     }
 
@@ -1602,8 +1606,18 @@ class PlayerActivity : BaseActivity() {
         viewModel.setCustomVideoAspect(ratio, label)
     }
 
+    /**
+     * True while a text field owns the input connection, such as the Width/Height inputs of the
+     * aspect ratio sheet.
+     *
+     * Key events must not reach mpv in that state. mpv's default bindings map the digits 1-0 to
+     * contrast, brightness, gamma, saturation and volume, and [AniyomiMPVView.onKey] consumes every
+     * key it maps, so a typed digit would both change a video setting and never reach the field.
+     */
+    private fun isTextInputActive(): Boolean = inputMethodManager.isActive
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (player.onKey(event)) return true
+        if (!isTextInputActive() && player.onKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
     // ANZ <--
