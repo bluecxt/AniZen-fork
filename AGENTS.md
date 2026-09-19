@@ -22,7 +22,14 @@ in git ancestry. The recorded content ancestor and all measurements live in
 | Branch | Work on a feature branch. `preview` is the active integration branch (CI: *Preview Build*). |
 | Never | Commit or push directly to `master`. |
 | Never | Rewrite history — it invalidates every published release tag and the `r<commitCount>` preview tag scheme. |
+| Never | Open a pull request. Push the branch and stop — the maintainer reviews and merges. |
 | Before push | Confirm `git branch --show-current` is not `master`. |
+
+**Why no pull requests:** `.github/workflows/preview.yml` triggers on `pull_request` as well as
+`push` to `preview`, and its *Create Release in Preview Repo* step has **no `if:` guard**. Any PR
+targeting `preview` therefore publishes a public release to `salmanbappi/anizen-preview` and posts an
+AI-generated changelog to Discord before anyone has reviewed the code. Pushing a branch publishes
+nothing; the workflow only runs once the maintainer merges.
 
 ### Provenance markers
 
@@ -112,7 +119,8 @@ creating a branch. It never touches your working tree.
 1. Keep every `// ANZ` block; take upstream outside the markers.
 2. Preserve `// ANK`, `// KMK`, `// SY`, `// AY` blocks unless the review says otherwise.
 3. Prefer upstream's structure and re-apply AniZen behaviour inside the markers.
-4. Merge on a sync branch, then PR into `preview` — never merge straight into `preview`.
+4. Commit the result on the sync branch and push it — **never** merge straight into `preview`, and
+   do not open a pull request (see the Git rules above).
 
 ### 4. Guard before pushing
 
