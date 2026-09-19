@@ -22,14 +22,19 @@ in git ancestry. The recorded content ancestor and all measurements live in
 | Branch | Work on a feature branch. `preview` is the active integration branch (CI: *Preview Build*). |
 | Never | Commit or push directly to `master`. |
 | Never | Rewrite history — it invalidates every published release tag and the `r<commitCount>` preview tag scheme. |
-| Never | Open a pull request. Push the branch and stop — the maintainer reviews and merges. |
+| Never | Open a pull request. Integrate into `preview` by pushing or merging — that push is what triggers the build. |
 | Before push | Confirm `git branch --show-current` is not `master`. |
 
-**Why no pull requests:** `.github/workflows/preview.yml` triggers on `pull_request` as well as
-`push` to `preview`, and its *Create Release in Preview Repo* step has **no `if:` guard**. Any PR
-targeting `preview` therefore publishes a public release to `salmanbappi/anizen-preview` and posts an
-AI-generated changelog to Discord before anyone has reviewed the code. Pushing a branch publishes
-nothing; the workflow only runs once the maintainer merges.
+**How builds happen:** `.github/workflows/preview.yml` runs on a **push to `preview`**, on a
+`pull_request` targeting `preview`, and manually via `workflow_dispatch`. It runs `detekt`, then
+`assemblePreview`, then publishes a release to `salmanbappi/anizen-preview` and posts an AI-generated
+changelog to Discord. That release step has **no `if:` guard**, so every run publishes.
+
+Therefore: **to get a build, integrate into `preview` and push it.** Pushing a feature branch on its
+own triggers nothing — that is why branches exist here as scratch space, not as a build trigger.
+Do not open a pull request: a PR run publishes a release built from *unmerged* code, which desyncs
+the `r<commitCount>` tag scheme from what `preview` actually contains. A failed build publishes
+nothing, so a broken push is safe.
 
 ### Provenance markers
 
