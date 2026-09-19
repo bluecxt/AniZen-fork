@@ -697,7 +697,11 @@ class PlayerActivity : BaseActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         if (!isInPictureInPictureMode) {
-            viewModel.changeVideoAspect(playerPreferences.aspectState().get())
+            // ANZ -->
+            // Restoring instead of applying the stored VideoAspect keeps a custom aspect ratio
+            // alive across rotation; applying the preset cleared `video-aspect-override`.
+            viewModel.restoreAspectRatio()
+            // ANZ <--
         } else {
             viewModel.hideControls()
         }
@@ -752,7 +756,14 @@ class PlayerActivity : BaseActivity() {
     internal fun onObserverEvent(property: String, value: Double) {
         if (player.isExiting) return
         when (property) {
-            "video-params/aspect" -> if (isPipSupportedAndEnabled) createPipParams()
+            "video-params/aspect" -> {
+                if (isPipSupportedAndEnabled) createPipParams()
+                // ANZ -->
+                // Video params are known at this point (fresh file, file switch or rotation),
+                // which is the reliable moment to re-apply a remembered custom aspect ratio.
+                viewModel.restoreAspectRatio()
+                // ANZ <--
+            }
         }
     }
 
@@ -767,7 +778,12 @@ class PlayerActivity : BaseActivity() {
             MPV.mpvEvent.MPV_EVENT_FILE_LOADED -> {
                 viewModel.viewModelScope.launchIO { fileLoaded() }
             }
-            MPV.mpvEvent.MPV_EVENT_PLAYBACK_RESTART -> player.isExiting = false
+            MPV.mpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
+                player.isExiting = false
+                // ANZ -->
+                viewModel.restoreAspectRatio()
+                // ANZ <--
+            }
             MPV.mpvEvent.MPV_EVENT_END_FILE -> {
                 val errorNode = node.asMap()?.get("file_error") ?: return
                 var errorMessage = errorNode.asString() ?: "Error: File ended"
@@ -1431,6 +1447,9 @@ class PlayerActivity : BaseActivity() {
         // ANZ <--
         setupChapters()
         viewModel.checkFileLoaded()
+        // ANZ -->
+        viewModel.restoreAspectRatio()
+        // ANZ <--
 
         // aniSkip stuff
         viewModel.viewModelScope.launchIO {

@@ -1176,6 +1176,11 @@ class PlayerViewModel @JvmOverloads constructor(
         mpv.setPropertyDouble("panscan", pan)
         mpv.setPropertyDouble("video-aspect-override", ratio)
         playerPreferences.aspectState().set(aspect)
+        // ANZ -->
+        // A preset aspect is in effect now, so the aspect sheet must stop showing a custom
+        // ratio as the selected one.
+        _videoAspectOverride.value = if (aspect == VideoAspect.Stretch) -1.0 else ratio
+        // ANZ <--
         playerUpdate.update { PlayerUpdates.AspectRatio }
     }
 
@@ -2824,6 +2829,16 @@ class PlayerViewModel @JvmOverloads constructor(
         }
     }
 
+    // ANZ -->
+    /**
+     * Re-applies the aspect ratio the user last chose for this session/anime.
+     *
+     * This is the single entry point for "make mpv match the stored aspect intent" and must be
+     * called whenever the video params become known, a file finishes loading, playback restarts,
+     * or the configuration changes. Rotation previously reset `video-aspect-override` by calling
+     * [changeVideoAspect] with the stored [VideoAspect], which wiped any custom ratio.
+     */
+    // ANZ <--
     fun restoreAspectRatio() {
         val aspect = playerPreferences.aspectState().get()
         val lastRatio = playerPreferences.lastAspectRatio().get().toDouble()
@@ -2839,10 +2854,15 @@ class PlayerViewModel @JvmOverloads constructor(
             mpv.setPropertyDouble("video-aspect-override", lastRatio)
             playerPreferences.aspectState().set(VideoAspect.Fit)
         } else {
-            if (lastRatio != -1.0) {
+            // ANZ -->
+            // Only drop the stored ratio once the playing anime is known: clearing it while
+            // currentAnime is still unresolved would erase another anime's saved ratio.
+            if (lastRatio != -1.0 && currentAnimeId != -1L) {
                 playerPreferences.lastAspectRatio().set(-1f)
                 playerPreferences.lastAspectRatioAnimeId().set(-1L)
             }
+            _videoAspectOverride.value = -1.0
+            // ANZ <--
             changeVideoAspect(aspect)
         }
     }
