@@ -1190,23 +1190,34 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     @Suppress("DEPRECATION")
-    fun changeVideoAspect(aspect: VideoAspect) {
+    // ANZ -->
+    fun changeVideoAspect(aspect: VideoAspect, showUpdate: Boolean = true) {
         viewModelScope.launch {
-            eventChannel.send(Event.ChangeVideoAspect(aspect))
+            eventChannel.send(Event.ChangeVideoAspect(aspect, showUpdate))
         }
     }
+    // ANZ <--
 
-    fun setAspect(aspect: VideoAspect, pan: Double, ratio: Double) {
+    // ANZ -->
+    /**
+     * Applies an aspect ratio preset.
+     *
+     * @param showUpdate whether to announce the change with an on-screen label. Silent
+     *   re-application — rotation, file load, or a `video-params` change — must pass `false`.
+     *   Otherwise the label appears during ordinary playback: seeking re-triggers the
+     *   `video-params/aspect` observer on some devices, which put "Fit to screen" on screen on
+     *   every double-tap skip.
+     */
+    fun setAspect(aspect: VideoAspect, pan: Double, ratio: Double, showUpdate: Boolean = true) {
         mpv.setPropertyDouble("panscan", pan)
         mpv.setPropertyDouble("video-aspect-override", ratio)
         playerPreferences.aspectState().set(aspect)
-        // ANZ -->
         // A preset aspect is in effect now, so the aspect sheet must stop showing a custom
         // ratio as the selected one.
         _videoAspectOverride.value = if (aspect == VideoAspect.Stretch) -1.0 else ratio
-        // ANZ <--
-        playerUpdate.update { PlayerUpdates.AspectRatio }
+        if (showUpdate) playerUpdate.update { PlayerUpdates.AspectRatio }
     }
+    // ANZ <--
 
     fun cycleScreenRotations() {
         viewModelScope.launch {
@@ -2757,7 +2768,9 @@ class PlayerViewModel @JvmOverloads constructor(
         data class SetVideo(val video: Video?) : Event()
         data class SetStatusBar(val show: Boolean) : Event()
         data class SetBrightness(val brightness: Float) : Event()
-        data class ChangeVideoAspect(val aspect: VideoAspect) : Event()
+        // ANZ -->
+        data class ChangeVideoAspect(val aspect: VideoAspect, val showUpdate: Boolean = true) : Event()
+        // ANZ <--
         data object CycleRotations : Event()
         data object ToggleKeyboard : Event()
         data class SetKeyboard(val show: Boolean) : Event()
@@ -2881,7 +2894,9 @@ class PlayerViewModel @JvmOverloads constructor(
         val currentAnimeId = currentAnime.value?.id ?: -1L
 
         if (aspect == VideoAspect.Stretch) {
-            changeVideoAspect(VideoAspect.Stretch)
+            // ANZ -->
+            changeVideoAspect(VideoAspect.Stretch, showUpdate = false)
+            // ANZ <--
         } else if (lastRatio != -1.0 && (rememberAspectRatio || lastRatioAnimeId == currentAnimeId)) {
             _videoAspectOverride.value = lastRatio
             mpv.setPropertyDouble("panscan", 0.0)
@@ -2897,7 +2912,9 @@ class PlayerViewModel @JvmOverloads constructor(
             }
             _videoAspectOverride.value = -1.0
             // ANZ <--
-            changeVideoAspect(aspect)
+            // ANZ -->
+            changeVideoAspect(aspect, showUpdate = false)
+            // ANZ <--
         }
     }
 

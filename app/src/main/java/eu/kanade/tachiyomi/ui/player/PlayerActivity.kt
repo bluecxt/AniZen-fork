@@ -343,7 +343,9 @@ class PlayerActivity : BaseActivity() {
                         }
                     }
                     is PlayerViewModel.Event.ChangeVideoAspect -> {
-                        changeVideoAspect(event.aspect)
+                        // ANZ -->
+                        changeVideoAspect(event.aspect, event.showUpdate)
+                        // ANZ <--
                     }
                     PlayerViewModel.Event.CycleRotations -> {
                         cycleRotations()
@@ -1476,7 +1478,9 @@ class PlayerActivity : BaseActivity() {
         )
     }
 
-    private fun changeVideoAspect(aspect: VideoAspect) {
+    // ANZ -->
+    private fun changeVideoAspect(aspect: VideoAspect, showUpdate: Boolean = true) {
+    // ANZ <--
         var ratio = -1.0
         val pan: Double
         when (aspect) {
@@ -1496,7 +1500,9 @@ class PlayerActivity : BaseActivity() {
                 pan = 0.0
             }
         }
-        viewModel.setAspect(aspect, pan, ratio)
+        // ANZ -->
+        viewModel.setAspect(aspect, pan, ratio, showUpdate)
+        // ANZ <--
     }
 
     private fun cycleRotations() {
