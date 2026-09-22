@@ -94,6 +94,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControls
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
@@ -354,10 +355,8 @@ class PlayerActivity : BaseActivity() {
         // ANZ -->
         viewModel.paused
             .onEach {
-                if (isInPictureInPictureMode || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (isPipSupportedAndEnabled) {
-                        setPictureInPictureParams(createPipParams())
-                    }
+                if (isPipSupportedAndEnabled && isInPictureInPictureMode) {
+                    runCatching { setPictureInPictureParams(createPipParams()) }
                 }
             }
             .launchIn(lifecycleScope)
@@ -393,15 +392,9 @@ class PlayerActivity : BaseActivity() {
                     PlayerControls(
                         viewModel = viewModel,
                         castManager = castManager, // Pass the castManager instance
-                        onBackPress = {
-                            if (isPipSupportedAndEnabled && viewModel.paused.value == false &&
-                                playerPreferences.pipOnExit().get()
-                            ) {
-                                enterPictureInPictureMode(createPipParams())
-                            } else {
-                                finish()
-                            }
-                        },
+                        // ANZ -->
+                        onBackPress = { backPressed() },
+                        // ANZ <--
                     )
                 }
             }
@@ -470,9 +463,7 @@ class PlayerActivity : BaseActivity() {
             runCatching { unregisterReceiver(it) }
             pipReceiver = null
         }
-        if (isFinishing) {
-            mpv.command("stop")
-        }
+        runCatching { viewModel.pause() }
         // ANZ <--
 
         super.onDestroy()
@@ -522,7 +513,12 @@ class PlayerActivity : BaseActivity() {
         }
 
         // ANZ -->
-        if (isFinishing) {
+        if (isInPictureInPictureMode && powerManager.isInteractive) {
+            viewModel.saveCurrentEpisodeWatchingProgress()
+            viewModel.deletePendingEpisodes()
+            runCatching { viewModel.pause() }
+            finish()
+        } else if (isFinishing) {
             player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
@@ -533,10 +529,10 @@ class PlayerActivity : BaseActivity() {
                     runCatching { serverToStop.stop() }
                 }
             }
-            mpv.command("stop")
+            runCatching { viewModel.pause() }
         } else if (!isInPictureInPictureMode || !powerManager.isInteractive) {
             viewModel.saveCurrentEpisodeWatchingProgress()
-            viewModel.pause()
+            runCatching { viewModel.pause() }
         }
         // ANZ <--
 
@@ -565,6 +561,17 @@ class PlayerActivity : BaseActivity() {
         }
 
         // Default behavior: finish the activity
+        // ANZ -->
+        if (isTaskRoot) {
+            finishAndRemoveTask()
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+            )
+            return
+        }
+        // ANZ <--
         finish()
         // ANK <--
     }
@@ -877,11 +884,15 @@ class PlayerActivity : BaseActivity() {
         )
         // ANZ <--
         builder.setSourceRectHint(pipRect)
+        // ANZ -->
         mpv.getPropertyInt("video-params/h")?.let { height ->
-            val width = height * player.getVideoOutAspect()!!
-            val rational = Rational(height, width.toInt()).toFloat()
-            if (rational in 0.42..2.38) builder.setAspectRatio(Rational(width.toInt(), height))
+            player.getVideoOutAspect()?.let { aspect ->
+                val width = height * aspect
+                val rational = Rational(height, width.toInt()).toFloat()
+                if (rational in 0.42..2.38) builder.setAspectRatio(Rational(width.toInt(), height))
+            }
         }
+        // ANZ <--
         return builder.build()
     }
 
@@ -892,21 +903,6 @@ class PlayerActivity : BaseActivity() {
                 unregisterReceiver(pipReceiver)
                 pipReceiver = null
             }
-            // ANZ -->
-            if (isFinishing) {
-                player.isExiting = true
-                viewModel.saveCurrentEpisodeWatchingProgress()
-                viewModel.deletePendingEpisodes()
-                val serverToStop = httpServer
-                httpServer = null
-                if (serverToStop != null) {
-                    lifecycleScope.launchIO {
-                        runCatching { serverToStop.stop() }
-                    }
-                }
-                mpv.command("stop")
-            }
-            // ANZ <--
         } else {
             setPictureInPictureParams(createPipParams())
             viewModel.hideControls()
