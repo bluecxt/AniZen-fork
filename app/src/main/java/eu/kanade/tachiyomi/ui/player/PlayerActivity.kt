@@ -352,16 +352,6 @@ class PlayerActivity : BaseActivity() {
             }
             .launchIn(lifecycleScope)
 
-        // ANZ -->
-        viewModel.paused
-            .onEach {
-                if (isPipSupportedAndEnabled && isInPictureInPictureMode) {
-                    runCatching { setPictureInPictureParams(createPipParams()) }
-                }
-            }
-            .launchIn(lifecycleScope)
-        // ANZ <--
-
         // AM (DISCORD) -->
         viewModel.viewModelScope.launchIO {
             updateDiscordRPC(exitingPlayer = false)
@@ -495,12 +485,12 @@ class PlayerActivity : BaseActivity() {
             }
         }
         // ANZ <--
+        // ANZ -->
         if (isFinishing) {
             viewModel.deletePendingEpisodes()
-            mpv.command("stop")
-        } else {
-            viewModel.pause()
         }
+        viewModel.pause()
+        // ANZ <--
 
         super.onPause()
     }
@@ -514,10 +504,11 @@ class PlayerActivity : BaseActivity() {
 
         // ANZ -->
         if (isInPictureInPictureMode && powerManager.isInteractive) {
+            player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
-            runCatching { viewModel.pause() }
-            finish()
+            viewModel.pause()
+            finishAndRemoveTask()
         } else if (isFinishing) {
             player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
@@ -529,10 +520,10 @@ class PlayerActivity : BaseActivity() {
                     runCatching { serverToStop.stop() }
                 }
             }
-            runCatching { viewModel.pause() }
+            viewModel.pause()
         } else if (!isInPictureInPictureMode || !powerManager.isInteractive) {
             viewModel.saveCurrentEpisodeWatchingProgress()
-            runCatching { viewModel.pause() }
+            viewModel.pause()
         }
         // ANZ <--
 
@@ -885,11 +876,13 @@ class PlayerActivity : BaseActivity() {
         // ANZ <--
         builder.setSourceRectHint(pipRect)
         // ANZ -->
-        mpv.getPropertyInt("video-params/h")?.let { height ->
-            player.getVideoOutAspect()?.let { aspect ->
-                val width = height * aspect
-                val rational = Rational(height, width.toInt()).toFloat()
-                if (rational in 0.42..2.38) builder.setAspectRatio(Rational(width.toInt(), height))
+        if (mpv.isInitialized) {
+            mpv.getPropertyInt("video-params/h")?.let { height ->
+                player.getVideoOutAspect()?.let { aspect ->
+                    val width = height * aspect
+                    val rational = Rational(height, width.toInt()).toFloat()
+                    if (rational in 0.42..2.38) builder.setAspectRatio(Rational(width.toInt(), height))
+                }
             }
         }
         // ANZ <--
