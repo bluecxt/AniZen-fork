@@ -132,6 +132,7 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.interactor.GetAnime
+import tachiyomi.domain.anime.interactor.GetCustomAnimeInfo
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.custombuttons.interactor.GetCustomButtons
@@ -173,6 +174,9 @@ class PlayerViewModel @JvmOverloads constructor(
     private val trackPreferences: TrackPreferences = Injekt.get(),
     private val trackEpisode: TrackEpisode = Injekt.get(),
     private val getAnime: GetAnime = Injekt.get(),
+    // ANZ -->
+    private val getCustomAnimeInfo: GetCustomAnimeInfo = Injekt.get(),
+    // ANZ <--
     private val getNextEpisodes: GetNextEpisodes = Injekt.get(),
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
@@ -1689,6 +1693,20 @@ class PlayerViewModel @JvmOverloads constructor(
         val stringResource: StringResource,
     ) : Exception(message)
 
+    // ANZ -->
+    /**
+     * Loads an anime with the user's edit overlay attached.
+     *
+     * `Anime.title` (and author/artist/thumbnail/description/genre/status) is a derived property
+     * of the overlay: `customAnimeInfo?.title ?: ogTitle`. The repository row returned by
+     * [GetAnime.await] carries no overlay, so reading it directly silently falls back to the
+     * source's original title — which is why an anime renamed in the edit dialog still showed its
+     * original name in the player.
+     */
+    private suspend fun getAnimeWithEdits(animeId: Long): Anime? =
+        getAnime.await(animeId)?.copy(customAnimeInfo = getCustomAnimeInfo.get(animeId))
+    // ANZ <--
+
     suspend fun init(
         animeId: Long,
         initialEpisodeId: Long,
@@ -1697,9 +1715,22 @@ class PlayerViewModel @JvmOverloads constructor(
         vidIndex: Int,
     ): Pair<InitResult, Result<Boolean>> {
         val defaultResult = InitResult(currentHosterList, qualityIndex, null)
-        if (!needsInit(animeId, initialEpisodeId)) return Pair(defaultResult, Result.success(true))
+        if (!needsInit(animeId, initialEpisodeId)) {
+            // ANZ -->
+            // The activity is reused for the same episode (onNewIntent), so nothing is re-read.
+            // Refresh the overlay anyway, otherwise an edit made while the player was in the
+            // background/PiP never reaches the controls.
+            getAnimeWithEdits(animeId)?.let { refreshed ->
+                _currentAnime.update { _ -> refreshed }
+                animeTitle.update { _ -> refreshed.title }
+            }
+            // ANZ <--
+            return Pair(defaultResult, Result.success(true))
+        }
         return try {
-            val anime = getAnime.await(animeId)
+            // ANZ -->
+            val anime = getAnimeWithEdits(animeId)
+            // ANZ <--
             if (anime != null) {
                 // ANZ -->
                 val isDifferentAnime = this.anime?.id != animeId
@@ -1730,7 +1761,9 @@ class PlayerViewModel @JvmOverloads constructor(
                 // ANZ <--
 
                 // Write to mpv table
-                val parentTitle = anime.parentId?.let { getAnime.await(it)?.title } ?: ""
+                // ANZ -->
+                val parentTitle = anime.parentId?.let { getAnimeWithEdits(it)?.title } ?: ""
+                // ANZ <--
                 mpv.setPropertyString("user-data/current-anime/anime-title", anime.title)
                 mpv.setPropertyString("user-data/current-anime/parent-title", parentTitle)
                 mpv.setPropertyInt("user-data/current-anime/intro-length", getAnimeSkipIntroLength())
@@ -2631,7 +2664,10 @@ class PlayerViewModel @JvmOverloads constructor(
         if (skipIntroLength == getAnimeSkipIntroLength().toLong()) return
         viewModelScope.launchIO {
             setAnimeViewerFlags.awaitSetSkipIntroLength(anime.id, skipIntroLength)
-            _currentAnime.update { _ -> getAnime.await(anime.id) }
+            // ANZ -->
+            // Re-attach the edit overlay, otherwise this refresh reverts the title to the original.
+            _currentAnime.update { _ -> getAnimeWithEdits(anime.id) }
+            // ANZ <--
         }
     }
 
