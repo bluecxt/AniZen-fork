@@ -118,8 +118,13 @@ class AnimeCoverScreenModel(
             imageSaver.save(
                 Image.Cover(
                     bitmap = bitmap,
-                    name = "cover",
-                    location = if (temp) Location.Cache else Location.Pictures(anime.title),
+                    // ANZ -->
+                    // Match upstream Anikku: a flat "<title>-cover.jpg" in the pictures folder,
+                    // resolved through the edit overlay so the name uses the title the user set.
+                    // Previously this wrote "cover.jpg" into a per-anime subfolder.
+                    name = "${anime.title}-cover",
+                    location = if (temp) Location.Cache else Location.Pictures.create(),
+                    // ANZ <--
                 ),
             )
         }
