@@ -518,10 +518,13 @@ class PlayerActivity : BaseActivity() {
         }
 
         // ANZ -->
-        if (wasInPictureInPictureMode && powerManager.isInteractive) {
-            // We left PiP without resuming, so the user dismissed the window: stop playback and
-            // tear the player task down. This must not depend on the ordering of
-            // onPictureInPictureModeChanged() relative to onStop().
+        // Either signal means we are leaving a PiP window: the latched flag covers devices that
+        // report the exit callback before onStop(), and isInPictureInPictureMode covers devices
+        // that report it after (or auto-enter without latching). A screen-off stop is excluded by
+        // isInteractive so that locking the phone does not kill the player.
+        if ((wasInPictureInPictureMode || isInPictureInPictureMode) && powerManager.isInteractive) {
+            // Left PiP without resuming, so the user dismissed the window: stop playback and tear
+            // the player task down.
             player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
