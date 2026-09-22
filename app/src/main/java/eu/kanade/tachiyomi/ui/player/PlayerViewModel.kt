@@ -1666,6 +1666,9 @@ class PlayerViewModel @JvmOverloads constructor(
         return try {
             val anime = getAnime.await(animeId)
             if (anime != null) {
+                // ANZ -->
+                val isDifferentAnime = this.anime?.id != animeId
+                // ANZ <--
                 sourceManager.isInitialized.first { it }
                 val source = sourceManager.getOrStub(anime.source)
                 _currentAnime.update { _ -> anime }
@@ -1683,6 +1686,13 @@ class PlayerViewModel @JvmOverloads constructor(
 
                 _hasPreviousEpisode.update { _ -> getCurrentEpisodeIndex() != 0 }
                 _hasNextEpisode.update { _ -> getCurrentEpisodeIndex() != currentPlaylist.value.size - 1 }
+
+                // ANZ -->
+                if (isDifferentAnime) {
+                    val defaultSpeed = playerPreferences.playerSpeed().get()
+                    mpv.setPropertyDouble("speed", defaultSpeed.toDouble())
+                }
+                // ANZ <--
 
                 // Write to mpv table
                 val parentTitle = anime.parentId?.let { getAnime.await(it)?.title } ?: ""

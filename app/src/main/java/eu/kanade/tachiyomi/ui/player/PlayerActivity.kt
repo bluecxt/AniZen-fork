@@ -351,6 +351,18 @@ class PlayerActivity : BaseActivity() {
             }
             .launchIn(lifecycleScope)
 
+        // ANZ -->
+        viewModel.paused
+            .onEach {
+                if (isInPictureInPictureMode || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (isPipSupportedAndEnabled) {
+                        setPictureInPictureParams(createPipParams())
+                    }
+                }
+            }
+            .launchIn(lifecycleScope)
+        // ANZ <--
+
         // AM (DISCORD) -->
         viewModel.viewModelScope.launchIO {
             updateDiscordRPC(exitingPlayer = false)
@@ -453,6 +465,16 @@ class PlayerActivity : BaseActivity() {
         updateDiscordRPC(exitingPlayer = true)
         // <-- AM (DISCORD)
 
+        // ANZ -->
+        pipReceiver?.let {
+            runCatching { unregisterReceiver(it) }
+            pipReceiver = null
+        }
+        if (isFinishing) {
+            mpv.command("stop")
+        }
+        // ANZ <--
+
         super.onDestroy()
     }
 
@@ -499,9 +521,24 @@ class PlayerActivity : BaseActivity() {
             }
         }
 
-        if (isInPictureInPictureMode && powerManager.isInteractive) {
+        // ANZ -->
+        if (isFinishing) {
+            player.isExiting = true
+            viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
+            val serverToStop = httpServer
+            httpServer = null
+            if (serverToStop != null) {
+                lifecycleScope.launchIO {
+                    runCatching { serverToStop.stop() }
+                }
+            }
+            mpv.command("stop")
+        } else if (!isInPictureInPictureMode || !powerManager.isInteractive) {
+            viewModel.saveCurrentEpisodeWatchingProgress()
+            viewModel.pause()
         }
+        // ANZ <--
 
         super.onStop()
     }
@@ -810,7 +847,9 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
-    fun createPipParams(): PictureInPictureParams {
+    // ANZ -->
+    fun createPipParams(isPaused: Boolean? = null): PictureInPictureParams {
+    // ANZ <--
         val builder = PictureInPictureParams.Builder()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val anime = viewModel.currentAnime.value
@@ -820,20 +859,23 @@ class PlayerActivity : BaseActivity() {
                 builder.setTitle(anime.title).setSubtitle(episode.name)
             }
         }
+        // ANZ -->
+        val pausedState = isPaused ?: (viewModel.paused.value ?: true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val autoEnter = playerPreferences.pipOnExit().get()
-            builder.setAutoEnterEnabled(viewModel.paused.value == false && autoEnter)
-            builder.setSeamlessResizeEnabled(viewModel.paused.value == false && autoEnter)
+            builder.setAutoEnterEnabled(!pausedState && autoEnter)
+            builder.setSeamlessResizeEnabled(!pausedState && autoEnter)
         }
         builder.setActions(
             createPipActions(
                 context = this,
-                isPaused = viewModel.paused.value ?: true,
+                isPaused = pausedState,
                 replaceWithPrevious = playerPreferences.pipReplaceWithPrevious().get(),
                 playlistCount = viewModel.currentPlaylist.value.size,
                 playlistPosition = viewModel.getCurrentEpisodeIndex(),
             ),
         )
+        // ANZ <--
         builder.setSourceRectHint(pipRect)
         mpv.getPropertyInt("video-params/h")?.let { height ->
             val width = height * player.getVideoOutAspect()!!
@@ -850,6 +892,21 @@ class PlayerActivity : BaseActivity() {
                 unregisterReceiver(pipReceiver)
                 pipReceiver = null
             }
+            // ANZ -->
+            if (isFinishing) {
+                player.isExiting = true
+                viewModel.saveCurrentEpisodeWatchingProgress()
+                viewModel.deletePendingEpisodes()
+                val serverToStop = httpServer
+                httpServer = null
+                if (serverToStop != null) {
+                    lifecycleScope.launchIO {
+                        runCatching { serverToStop.stop() }
+                    }
+                }
+                mpv.command("stop")
+            }
+            // ANZ <--
         } else {
             setPictureInPictureParams(createPipParams())
             viewModel.hideControls()
@@ -861,13 +918,27 @@ class PlayerActivity : BaseActivity() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent == null || intent.action != PIP_INTENTS_FILTER) return
                     when (intent.getIntExtra(PIP_INTENT_ACTION, 0)) {
-                        PIP_PAUSE -> viewModel.pause()
-                        PIP_PLAY -> viewModel.unpause()
+                        // ANZ -->
+                        PIP_PAUSE -> {
+                            viewModel.pause()
+                            setPictureInPictureParams(createPipParams(isPaused = true))
+                        }
+                        PIP_PLAY -> {
+                            viewModel.unpause()
+                            setPictureInPictureParams(createPipParams(isPaused = false))
+                        }
+                        // ANZ <--
                         PIP_NEXT -> viewModel.changeEpisode(false)
                         PIP_PREVIOUS -> viewModel.changeEpisode(true)
                         PIP_SKIP -> viewModel.seekBy(10)
                     }
-                    setPictureInPictureParams(createPipParams())
+                    // ANZ -->
+                    // Remote action update was already dispatched above for pause/play;
+                    // refresh once more for track changes or seek actions if needed.
+                    if (intent.getIntExtra(PIP_INTENT_ACTION, 0) !in listOf(PIP_PAUSE, PIP_PLAY)) {
+                        setPictureInPictureParams(createPipParams())
+                    }
+                    // ANZ <--
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

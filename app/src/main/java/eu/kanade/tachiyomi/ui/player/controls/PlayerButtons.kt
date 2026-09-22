@@ -182,7 +182,6 @@ fun RenderPlayerButton(
                 onClick = {
                     val newSpeed = if (currentSpeed >= 2f) 0.25f else (currentSpeed + 0.25f).toFixed(2)
                     viewModel.mpv.setPropertyDouble("speed", newSpeed.toDouble())
-                    viewModel.playerPreferences.playerSpeed().set(newSpeed)
                 },
                 onLongClick = { viewModel.showSheet(Sheets.PlaybackSpeed) },
             )
