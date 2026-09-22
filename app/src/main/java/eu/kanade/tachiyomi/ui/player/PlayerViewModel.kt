@@ -205,6 +205,15 @@ class PlayerViewModel @JvmOverloads constructor(
         it.setOptionString("gpu-shader-cache-dir", cachePath)
         it.setOptionString("icc-cache-dir", cachePath)
         it.setOptionString("keep-open", "yes")
+        // ANZ -->
+        // Start the engine at the remembered speed. This must happen here, as a pre-init option,
+        // rather than as a property write after initialization: `playbackSpeed` snapshots the
+        // "speed" property once when the flow is created, and the library's backing SharedFlow has
+        // replay 0 with a lazily started upstream, so a speed applied after that snapshot is
+        // emitted to zero subscribers and silently dropped. The player would then run at the saved
+        // speed while the controls kept displaying the stale 1x default.
+        it.setOptionString("speed", playerPreferences.playerSpeed().get().toString())
+        // ANZ <--
     }
 
     private val _isStopped = MutableStateFlow(false)
