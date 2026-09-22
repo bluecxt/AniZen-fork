@@ -993,9 +993,17 @@ class PlayerViewModel @JvmOverloads constructor(
         // ANK <--
     }
 
-    fun pauseUnpause() = mpv.command("cycle", "pause")
-    fun pause() = mpv.setPropertyBoolean("pause", true)
-    fun unpause() = mpv.setPropertyBoolean("pause", false)
+    // ANZ -->
+    fun pauseUnpause() {
+        if (mpv.isInitialized) mpv.command("cycle", "pause")
+    }
+    fun pause() {
+        if (mpv.isInitialized) mpv.setPropertyBoolean("pause", true)
+    }
+    fun unpause() {
+        if (mpv.isInitialized) mpv.setPropertyBoolean("pause", false)
+    }
+    // ANZ <--
 
     private val showStatusBar = playerPreferences.showSystemStatusBar().get()
     fun showControls() {
