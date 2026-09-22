@@ -172,6 +172,16 @@ class PlayerActivity : BaseActivity() {
 
     private var pipReceiver: BroadcastReceiver? = null
 
+    // ANZ -->
+    /**
+     * Set when the PiP window is closed. `onPictureInPictureModeChanged(false)` cannot tell an
+     * expand back to full screen apart from a dismissal, and it always runs *before* `onStop()`
+     * (so `isInPictureInPictureMode` is already false by then). `onResume()` clears this flag when
+     * the window was expanded; if it is still set in `onStop()` the user really dismissed PiP.
+     */
+    private var pipExitPending = false
+    // ANZ <--
+
     private val noisyReceiver = object : BroadcastReceiver() {
         var initialized = false
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -503,7 +513,8 @@ class PlayerActivity : BaseActivity() {
         }
 
         // ANZ -->
-        if (isInPictureInPictureMode && powerManager.isInteractive) {
+        if (pipExitPending && powerManager.isInteractive) {
+            // The user closed the PiP window: stop playback and tear the player task down.
             player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
@@ -705,6 +716,11 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onResume() {
+        // ANZ -->
+        // Resuming means the PiP window was expanded back to full screen, not dismissed.
+        pipExitPending = false
+        // ANZ <--
+
         // Reconnect cast if it was active
         castManager.apply {
             reconnect()
@@ -891,6 +907,11 @@ class PlayerActivity : BaseActivity() {
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        // ANZ -->
+        // Defer the "dismissed vs expanded" decision to onStop(): onResume() clears the flag if the
+        // window was expanded back to full screen.
+        pipExitPending = !isInPictureInPictureMode
+        // ANZ <--
         if (!isInPictureInPictureMode) {
             pipReceiver?.let {
                 unregisterReceiver(pipReceiver)

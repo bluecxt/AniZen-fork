@@ -1089,14 +1089,19 @@ class PlayerViewModel @JvmOverloads constructor(
         }
     }
 
+    // ANZ -->
     fun seekBy(offset: Int, precise: Boolean = false) {
-        mpv.command("seek", offset.toString(), if (precise) "relative+exact" else "relative")
+        if (mpv.isInitialized) {
+            mpv.command("seek", offset.toString(), if (precise) "relative+exact" else "relative")
+        }
     }
 
     fun seekTo(position: Int, precise: Boolean = true) {
+        if (!mpv.isInitialized) return
         if (position !in 0..(mpv.getPropertyInt("duration") ?: 0)) return
         mpv.command("seek", position.toString(), if (precise) "absolute" else "absolute+keyframes")
     }
+    // ANZ <--
 
     fun changeBrightnessTo(
         brightness: Float,
@@ -1136,7 +1141,9 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun changeMPVVolumeTo(volume: Int) {
         currentMPVVolume.update { volume }
-        mpv.setPropertyInt("volume", volume)
+        // ANZ -->
+        if (mpv.isInitialized) mpv.setPropertyInt("volume", volume)
+        // ANZ <--
     }
 
     // ANZ -->
