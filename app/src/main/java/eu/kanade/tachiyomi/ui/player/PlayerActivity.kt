@@ -174,12 +174,17 @@ class PlayerActivity : BaseActivity() {
 
     // ANZ -->
     /**
-     * Set when the PiP window is closed. `onPictureInPictureModeChanged(false)` cannot tell an
-     * expand back to full screen apart from a dismissal, and it always runs *before* `onStop()`
-     * (so `isInPictureInPictureMode` is already false by then). `onResume()` clears this flag when
-     * the window was expanded; if it is still set in `onStop()` the user really dismissed PiP.
+     * True from the moment PiP is entered until the activity is resumed again.
+     *
+     * A dismissed PiP window and one expanded back to full screen both produce
+     * `onPictureInPictureModeChanged(false)`, and the ordering of that callback relative to
+     * `onStop()` is not guaranteed — on some devices `isInPictureInPictureMode` still reports
+     * `true` inside `onStop()`. The only reliable discriminator is *what happens next*: expanding
+     * resumes the activity, dismissing stops it. So this flag is cleared in `onResume()` and
+     * consulted in `onStop()`; a stop that still has it set left PiP without resuming, i.e. the
+     * user dismissed the window.
      */
-    private var pipExitPending = false
+    private var wasInPictureInPictureMode = false
     // ANZ <--
 
     private val noisyReceiver = object : BroadcastReceiver() {
@@ -513,8 +518,10 @@ class PlayerActivity : BaseActivity() {
         }
 
         // ANZ -->
-        if (pipExitPending && powerManager.isInteractive) {
-            // The user closed the PiP window: stop playback and tear the player task down.
+        if (wasInPictureInPictureMode && powerManager.isInteractive) {
+            // We left PiP without resuming, so the user dismissed the window: stop playback and
+            // tear the player task down. This must not depend on the ordering of
+            // onPictureInPictureModeChanged() relative to onStop().
             player.isExiting = true
             viewModel.saveCurrentEpisodeWatchingProgress()
             viewModel.deletePendingEpisodes()
@@ -718,7 +725,7 @@ class PlayerActivity : BaseActivity() {
     override fun onResume() {
         // ANZ -->
         // Resuming means the PiP window was expanded back to full screen, not dismissed.
-        pipExitPending = false
+        wasInPictureInPictureMode = false
         // ANZ <--
 
         // Reconnect cast if it was active
@@ -908,9 +915,9 @@ class PlayerActivity : BaseActivity() {
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         // ANZ -->
-        // Defer the "dismissed vs expanded" decision to onStop(): onResume() clears the flag if the
-        // window was expanded back to full screen.
-        pipExitPending = !isInPictureInPictureMode
+        // Latch that we entered PiP. Whether leaving it was a dismissal or an expand is decided in
+        // onStop()/onResume(), because this callback's ordering against them is not guaranteed.
+        if (isInPictureInPictureMode) wasInPictureInPictureMode = true
         // ANZ <--
         if (!isInPictureInPictureMode) {
             pipReceiver?.let {
