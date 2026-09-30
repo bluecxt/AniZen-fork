@@ -19,22 +19,23 @@ in git ancestry. The recorded content ancestor and all measurements live in
 
 | Rule | Required behaviour |
 |------|--------------------|
-| Branch | Work on a feature branch. `preview` is the active integration branch (CI: *Preview Build*). |
-| Never | Commit or push directly to `master`. |
+| Development | Work on a feature branch or `preview`. `preview` is the active integration and testing branch (CI: *Preview Build*). |
+| Release | After testing on `preview`, release to `master` by merging `preview` into `master` and pushing directly (triggers CI: *Official Release*). |
 | Never | Rewrite history — it invalidates every published release tag and the `r<commitCount>` preview tag scheme. |
 | Never | Open a pull request. Integrate into `preview` by pushing or merging — that push is what triggers the build. |
-| Before push | Confirm `git branch --show-current` is not `master`. |
 
-**How builds happen:** `.github/workflows/preview.yml` runs on a **push to `preview`**, on a
-`pull_request` targeting `preview`, and manually via `workflow_dispatch`. It runs `detekt`, then
-`assemblePreview`, then publishes a release to `salmanbappi/anizen-preview` and posts an AI-generated
-changelog to Discord. That release step has **no `if:` guard**, so every run publishes.
+**How builds happen:**
+- **Preview builds:** `.github/workflows/preview.yml` runs on a **push to `preview`**, on a
+  `pull_request` targeting `preview`, and manually via `workflow_dispatch`. It runs `detekt`, then
+  `assemblePreview`, then publishes a preview release to `salmanbappi/anizen-preview` and posts an AI-generated
+  changelog to Discord. That release step has **no `if:` guard**, so every push to `preview` publishes.
+- **Official releases:** `.github/workflows/release.yml` runs on a **push to `master`**. It runs `detekt`,
+  bumps the version, commits the version bump, builds the release APK, and publishes the official release.
 
-Therefore: **to get a build, integrate into `preview` and push it.** Pushing a feature branch on its
-own triggers nothing — that is why branches exist here as scratch space, not as a build trigger.
+Therefore: **make changes and test in `preview`, then release by merging `preview` into `master` and pushing to `master`.**
+Pushing a feature branch on its own triggers nothing — branches exist as scratch space.
 Do not open a pull request: a PR run publishes a release built from *unmerged* code, which desyncs
-the `r<commitCount>` tag scheme from what `preview` actually contains. A failed build publishes
-nothing, so a broken push is safe.
+the `r<commitCount>` tag scheme from what `preview` actually contains.
 
 ### Provenance markers
 
