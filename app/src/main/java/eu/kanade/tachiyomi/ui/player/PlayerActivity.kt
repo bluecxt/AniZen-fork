@@ -780,6 +780,9 @@ class PlayerActivity : BaseActivity() {
     @Suppress("unused")
     internal fun onObserverEvent(property: String, value: Long) {
         if (player.isExiting) return
+        when (property) {
+            "vo-delayed-frame-count" -> PlayerStats.delayedFrames.value = value
+        }
     }
 
     @Suppress("unused")
@@ -790,6 +793,7 @@ class PlayerActivity : BaseActivity() {
     internal fun onObserverEvent(property: String, value: Boolean) {
         if (player.isExiting) return
         when (property) {
+            "interpolation" -> PlayerStats.isInterpolating.value = value
             "pause" if value -> {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -810,6 +814,10 @@ class PlayerActivity : BaseActivity() {
 
     internal fun onObserverEvent(property: String, value: String) {
         if (player.isExiting) return
+        when (property) {
+            "video-sync" -> PlayerStats.videoSync.value = value
+            "tscale" -> PlayerStats.tscale.value = value
+        }
         when (property.substringBeforeLast("/")) {
             "user-data/aniyomi" -> viewModel.handleLuaInvocation(property, value)
         }
@@ -819,6 +827,9 @@ class PlayerActivity : BaseActivity() {
     internal fun onObserverEvent(property: String, value: Double) {
         if (player.isExiting) return
         when (property) {
+            "display-fps", "override-display-fps" -> PlayerStats.displayFps.value = value
+            "estimated-display-fps" -> PlayerStats.estimatedDisplayFps.value = value
+            "mistime" -> PlayerStats.mistime.value = value
             "video-params/aspect" -> {
                 if (isPipSupportedAndEnabled) createPipParams()
                 // ANZ -->

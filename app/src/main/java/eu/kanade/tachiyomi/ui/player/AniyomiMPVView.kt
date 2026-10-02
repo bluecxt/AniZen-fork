@@ -32,6 +32,7 @@ import eu.kanade.tachiyomi.ui.player.settings.DecoderPreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.SubtitleAssOverride
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
+import eu.kanade.tachiyomi.util.system.getDisplayRefreshRate
 import `is`.xyz.mpv.BaseMPVView
 import `is`.xyz.mpv.KeyMapping
 import `is`.xyz.mpv.MPV
@@ -97,6 +98,32 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet?) : BaseMPVView(
         setSafeOptionString("profile", "fast")
         mpv?.setOptionString("hwdec", if (decoderPreferences.tryHWDecoding().get()) "auto" else "no")
 
+        val isHighQuality = decoderPreferences.highQualityScaling().get()
+        val scaler = if (isHighQuality) "spline36" else "bilinear"
+        setSafeOptionString("scale", scaler)
+        setSafeOptionString("cscale", scaler)
+        setSafeOptionString("dscale", scaler)
+        setSafeOptionString("dither", if (isHighQuality) "fruit" else "no")
+
+        // ANZ -->
+        val isSmoothMotion = decoderPreferences.smoothMotion().get()
+        if (isSmoothMotion) {
+            val detectedRefreshRate = context.getDisplayRefreshRate()
+            val fpsLimit = decoderPreferences.interpolationFPSLimit().get()
+            val targetFps = if (fpsLimit > 0) fpsLimit.toDouble() else detectedRefreshRate.toDouble()
+
+            mpv?.setOptionString("video-sync", "display-resample")
+            mpv?.setOptionString("interpolation", "yes")
+            mpv?.setOptionString("correct-pts", "yes")
+            mpv?.setOptionString("tscale", decoderPreferences.interpolationMode().get().value)
+            mpv?.setOptionString("display-fps", targetFps.toString())
+            mpv?.setOptionString("override-display-fps", targetFps.toString())
+        } else {
+            mpv?.setOptionString("video-sync", "audio")
+            mpv?.setOptionString("interpolation", "no")
+        }
+        // ANZ <--
+
         if (decoderPreferences.useYUV420P().get()) {
             mpv?.setOptionString("vf", "format=yuv420p")
         }
@@ -156,6 +183,17 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet?) : BaseMPVView(
                 mpv?.command("script-binding", "stats/display-page-$it")
             }
         }
+
+        // ANZ -->
+        if (decoderPreferences.smoothMotion().get()) {
+            val detectedRefreshRate = context.getDisplayRefreshRate()
+            val fpsLimit = decoderPreferences.interpolationFPSLimit().get()
+            val targetFps = if (fpsLimit > 0) fpsLimit.toDouble() else detectedRefreshRate.toDouble()
+
+            mpv?.setPropertyDouble("display-fps", targetFps)
+            mpv?.setPropertyDouble("override-display-fps", targetFps)
+        }
+        // ANZ <--
     }
 
     fun onKey(event: KeyEvent): Boolean {
@@ -201,6 +239,17 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet?) : BaseMPVView(
         "pause" to MPV.mpvFormat.MPV_FORMAT_FLAG,
         "video-params/aspect" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
         "eof-reached" to MPV.mpvFormat.MPV_FORMAT_FLAG,
+
+        // ANZ -->
+        "interpolation" to MPV.mpvFormat.MPV_FORMAT_FLAG,
+        "video-sync" to MPV.mpvFormat.MPV_FORMAT_STRING,
+        "tscale" to MPV.mpvFormat.MPV_FORMAT_STRING,
+        "display-fps" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
+        "override-display-fps" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
+        "estimated-display-fps" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
+        "vo-delayed-frame-count" to MPV.mpvFormat.MPV_FORMAT_INT64,
+        "mistime" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
+        // ANZ <--
 
         "user-data/aniyomi/show_text" to MPV.mpvFormat.MPV_FORMAT_STRING,
         "user-data/aniyomi/toggle_ui" to MPV.mpvFormat.MPV_FORMAT_STRING,

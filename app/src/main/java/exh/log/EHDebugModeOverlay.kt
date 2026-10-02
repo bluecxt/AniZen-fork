@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import eu.kanade.tachiyomi.ui.player.PlayerStats
+import eu.kanade.tachiyomi.util.system.getDisplayRefreshRate
 import `is`.xyz.mpv.MPV
 import kotlinx.coroutines.delay
 import java.text.DecimalFormat
@@ -32,14 +33,16 @@ fun InterpolationStatsOverlay() {
     // ANZ -->
     val activity = LocalContext.current as? PlayerActivity
     val mpv = activity?.viewModel?.mpv
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
         while (true) {
             PlayerStats.estimatedVfFps.value = mpv?.getPropertyDouble("estimated-vf-fps") ?: 0.0
             PlayerStats.videoParamsFps.value = mpv?.getPropertyDouble("video-params/fps") ?: 0.0
             PlayerStats.containerFps.value = mpv?.getPropertyDouble("container-fps") ?: 0.0
-            PlayerStats.displayFps.value = mpv?.getPropertyDouble("override-display-fps")
-                ?: mpv?.getPropertyDouble("display-fps")
-                ?: 0.0
+            val detectedRefreshRate = context.getDisplayRefreshRate().toDouble()
+            PlayerStats.displayFps.value = (mpv?.getPropertyDouble("override-display-fps")?.takeIf { it > 0.0 }
+                ?: mpv?.getPropertyDouble("display-fps")?.takeIf { it > 0.0 }
+                ?: detectedRefreshRate)
             PlayerStats.estimatedDisplayFps.value = mpv?.getPropertyDouble("estimated-display-fps") ?: 0.0
 
             PlayerStats.isInterpolating.value = mpv?.getPropertyBoolean("interpolation") ?: false

@@ -125,3 +125,22 @@ fun Activity.enableHighRefreshRate() {
     }
 }
 
+/**
+ * Returns the current display's refresh rate in Hz, or a sensible fallback (60Hz).
+ */
+fun Context.getDisplayRefreshRate(): Float {
+    return try {
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display ?: (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
+        } else {
+            val windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            @Suppress("DEPRECATION")
+            windowManager?.defaultDisplay
+        }
+        display?.refreshRate?.takeIf { it > 0f } ?: 60f
+    } catch (_: Exception) {
+        60f
+    }
+}
+
+
