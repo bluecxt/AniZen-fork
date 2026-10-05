@@ -114,6 +114,25 @@ open /* SY <-- */ class NetworkHelper(
             CloudflareInterceptor(context, cookieJar, ::defaultUserAgentProvider),
         )
 
+        // ANZ -->
+        // Pin User-Agent on requests carrying cf_clearance at the wire level
+        builder.addNetworkInterceptor { chain ->
+            val original = chain.request()
+            val cookieHeader = original.header("Cookie").orEmpty()
+            val pinnedUa = solveUaFor(original.url.host)
+            val req = if (
+                pinnedUa != null &&
+                cookieHeader.contains("cf_clearance") &&
+                original.header("User-Agent") != pinnedUa
+            ) {
+                original.newBuilder().header("User-Agent", pinnedUa).build()
+            } else {
+                original
+            }
+            chain.proceed(req)
+        }
+        // ANZ <--
+
         when (preferences.dohProvider().get()) {
             PREF_DOH_CLOUDFLARE -> builder.dohCloudflare()
             PREF_DOH_GOOGLE -> builder.dohGoogle()
@@ -162,5 +181,27 @@ open /* SY <-- */ class NetworkHelper(
     }
 
     companion object {
+        // ANZ -->
+        /**
+         * Timestamp (ms) when a Cloudflare challenge was last successfully solved
+         * (either headless or manual in WebView).
+         */
+        @Volatile
+        var lastSolveAtMs: Long = 0L // ANZ
+
+        /**
+         * Map of host -> User-Agent that solved Cloudflare for that host.
+         * Prevents UA mismatch between requests that earned cf_clearance and requests that send it.
+         */
+        private val solveUaByHost = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        fun rememberSolveUa(host: String, ua: String?) {
+            if (!ua.isNullOrBlank()) {
+                solveUaByHost[host] = ua
+            }
+        }
+
+        fun solveUaFor(host: String): String? = solveUaByHost[host]
+        // ANZ <--
     }
 }

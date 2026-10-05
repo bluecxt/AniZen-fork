@@ -10,8 +10,12 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import eu.kanade.tachiyomi.network.AndroidCookieJar
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.system.isOutdated
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
@@ -31,8 +35,13 @@ class CloudflareInterceptor(
     private val executor = ContextCompat.getMainExecutor(context)
 
     override fun shouldIntercept(response: Response): Boolean {
-        // Check if Cloudflare anti-bot is on
-        return response.code in ERROR_CODES && response.header("Server") in SERVER_CHECK
+        // ANZ -->
+        val isChallenge = response.header("cf-mitigated") == "challenge"
+        val isCloudflare = response.header("Server") in SERVER_CHECK
+        val isErrorCode = response.code in ERROR_CODES
+        return (isChallenge && (isCloudflare || response.header("Server") == null)) ||
+            (isErrorCode && isCloudflare)
+        // ANZ <--
     }
 
     override fun intercept(
@@ -40,6 +49,19 @@ class CloudflareInterceptor(
         request: Request,
         response: Response,
     ): Response {
+        // ANZ -->
+        val solvedAt = NetworkHelper.lastSolveAtMs
+        val justSolved = solvedAt > 0 && (System.currentTimeMillis() - solvedAt) < SOLVE_GRACE_MS
+        if (justSolved && cookieManager.get(request.url).any { it.name == "cf_clearance" }) {
+            response.close()
+            val retried = chain.proceed(request)
+            if (!shouldIntercept(retried)) {
+                return retried
+            }
+            retried.close()
+        }
+        // ANZ <--
+
         try {
             response.close()
             // ANZ -->
@@ -79,11 +101,14 @@ class CloudflareInterceptor(
     }
 
     private fun cleanUserAgent(userAgent: String): String {
+        // ANZ -->
         return userAgent
             .replace(ANIYOMI_USER_AGENT_REGEX, "")
             .replace(ANIZEN_USER_AGENT_REGEX, "")
             .replace(TACHIYOMI_USER_AGENT_REGEX, "")
+            .replace("; wv", "")
             .trim()
+        // ANZ <--
     }
 
     private fun addClientHints(builder: Request.Builder, userAgent: String) {
@@ -135,6 +160,18 @@ class CloudflareInterceptor(
             }
             webview = createdWebView
 
+            // ANZ -->
+            createdWebView.addJavascriptInterface(
+                object {
+                    @android.webkit.JavascriptInterface
+                    fun interactiveBegin() {
+                        latch.countDown()
+                    }
+                },
+                "anizen",
+            )
+            // ANZ <--
+
             if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
                 try {
                     parentView = activity.findViewById(android.R.id.content) as? android.view.ViewGroup
@@ -165,6 +202,15 @@ class CloudflareInterceptor(
                             Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
                             Object.defineProperty(document, 'hasFocus', { get: () => () => true });
                             window.hasFocus = () => true;
+
+                            // Listen for Cloudflare interactive challenges
+                            window.addEventListener('message', function(e) {
+                                if (e.data && (e.data === 'interactiveBegin' || (typeof e.data === 'object' && e.data.event === 'interactiveBegin'))) {
+                                    if (window.anizen && window.anizen.interactiveBegin) {
+                                        window.anizen.interactiveBegin();
+                                    }
+                                }
+                            });
                         } catch (e) {}
                         """.trimIndent(),
                         null
@@ -181,6 +227,8 @@ class CloudflareInterceptor(
                     // ANZ -->
                     if (isCloudFlareBypassed()) {
                         cloudflareBypassed = true
+                        NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+                        NetworkHelper.rememberSolveUa(origRequestUrl.toHttpUrl().host, cleanUserAgent)
                         latch.countDown()
                         return
                     }
@@ -201,80 +249,19 @@ class CloudflareInterceptor(
                         latch.countDown()
                         return
                     }
+
+                    // Dispatch native touch events through Android pipeline to bypass Turnstile
+                    CoroutineScope(Dispatchers.Default).launch {
+                        if (CloudflareSolver.solve(view)) {
+                            if (isCloudFlareBypassed()) {
+                                cloudflareBypassed = true
+                                NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+                                NetworkHelper.rememberSolveUa(origRequestUrl.toHttpUrl().host, cleanUserAgent)
+                                latch.countDown()
+                            }
+                        }
+                    }
                     // ANZ <--
-
-                    // Inject Turnstile auto-click script
-                    view.evaluateJavascript(
-                        """
-                        (function() {
-                            const MIN_DELAY = 1000;
-                            const MAX_DELAY = 3000;
-                            const CHECK_INTERVAL = 2000;
-
-                            function getRandomDelay() {
-                                return Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY + 1)) + MIN_DELAY;
-                            }
-
-                            function findWidget(root) {
-                                const widget = root.querySelector('#challenge-stage input[type="checkbox"]') ||
-                                       root.querySelector('input[name="cf-turnstile-response"]') ||
-                                       root.querySelector('.ctp-checkbox-container input') ||
-                                       root.querySelector('.cf-turnstile-wrapper iframe') ||
-                                       root.querySelector('#turnstile-wrapper iframe');
-
-                                if (widget) return widget;
-
-                                const all = root.querySelectorAll('*');
-                                for (let i = 0; i < all.length; i++) {
-                                    if (all[i].shadowRoot) {
-                                        const found = findWidget(all[i].shadowRoot);
-                                        if (found) return found;
-                                    }
-                                }
-                                return null;
-                            }
-
-                            function attemptClick() {
-                                const element = findWidget(document);
-                                if (element) {
-                                    setTimeout(() => {
-                                        if (element.tagName === 'IFRAME') {
-                                            element.focus();
-                                        } else {
-                                            element.focus();
-                                            element.click();
-                                            element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                            element.dispatchEvent(new Event('change', { bubbles: true }));
-                                            element.dispatchEvent(new Event('input', { bubbles: true }));
-                                        }
-                                    }, getRandomDelay());
-                                    return true;
-                                }
-                                return false;
-                            }
-
-                            const observer = new MutationObserver((mutations) => {
-                                if (attemptClick()) {
-                                    observer.disconnect();
-                                }
-                            });
-
-                            observer.observe(document.body, { childList: true, subtree: true });
-
-                            if (attemptClick()) {
-                                observer.disconnect();
-                            }
-
-                            const interval = setInterval(() => {
-                                if (attemptClick()) {
-                                    clearInterval(interval);
-                                    observer.disconnect();
-                                }
-                            }, CHECK_INTERVAL);
-                        })();
-                        """.trimIndent(),
-                        null
-                    )
                 }
 
                 // ANZ -->
@@ -313,6 +300,10 @@ class CloudflareInterceptor(
                     .firstOrNull { it.name == "cf_clearance" }
                 if (currentCookie != null && currentCookie != oldCookie) {
                     cloudflareBypassed = true
+                    // ANZ -->
+                    NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+                    NetworkHelper.rememberSolveUa(origRequestUrl.toHttpUrl().host, cleanUserAgent)
+                    // ANZ <--
                     latch.countDown()
                     pollTimer.cancel()
                     return
@@ -343,6 +334,10 @@ class CloudflareInterceptor(
                                 .firstOrNull { it.name == "cf_clearance" }
                             if (current != null) {
                                 cloudflareBypassed = true
+                                // ANZ -->
+                                NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+                                NetworkHelper.rememberSolveUa(origRequestUrl.toHttpUrl().host, cleanUserAgent)
+                                // ANZ <--
                                 latch.countDown()
                                 pollTimer.cancel()
                             }
@@ -390,6 +385,9 @@ class CloudflareInterceptor(
 private val ERROR_CODES = listOf(403, 503)
 private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
 private val COOKIE_NAMES = listOf("cf_clearance")
+// ANZ -->
+private const val SOLVE_GRACE_MS = 90_000L // ANZ
+// ANZ <--
 
 // Hoisted out of the interceptor body: these previously recompiled on every request.
 private val ANIYOMI_USER_AGENT_REGEX = Regex("\\s+Aniyomi/\\S+", RegexOption.IGNORE_CASE)

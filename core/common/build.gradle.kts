@@ -44,6 +44,9 @@ dependencies {
     api(kotlinx.serialization.json.okio)
 
     api(libs.preferencektx)
+    // ANZ -->
+    api(libs.webkit)
+    // ANZ <--
 
     implementation(libs.jsoup)
 

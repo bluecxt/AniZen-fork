@@ -238,4 +238,7 @@
 
     <!-- Playback Speed -->
     <string name="player_sheets_speed_long_press">Long press speed</string>
+
+    <!-- WebView -->
+    <string name="action_webview_close_tab">Close tab</string>
 </resources>
