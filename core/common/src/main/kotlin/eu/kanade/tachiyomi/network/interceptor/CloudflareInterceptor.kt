@@ -87,7 +87,7 @@ class CloudflareInterceptor(
                 }
                 .build()
 
-            resolveWithWebView(newRequest, oldCookie)
+            resolveWithWebView(newRequest, oldCookie, cleanUserAgent)
 
             return chain.proceed(newRequest)
         }
@@ -123,7 +123,7 @@ class CloudflareInterceptor(
         builder.header("Sec-CH-UA-Platform-Version", "\"$androidVersion.0.0\"")
     }
 
-    private fun resolveWithWebView(originalRequest: Request, oldCookie: Cookie?) {
+    private fun resolveWithWebView(originalRequest: Request, oldCookie: Cookie?, cleanUserAgent: String) {
         // We need to lock this thread until the WebView finds the challenge solution url, because
         // OkHttp doesn't support asynchronous interceptors.
         val latch = CountDownLatch(1)

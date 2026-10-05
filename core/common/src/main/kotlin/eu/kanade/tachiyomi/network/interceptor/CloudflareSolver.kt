@@ -80,7 +80,8 @@ object CloudflareSolver { // ANZ
                 }
 
                 delay(POST_CLICK_DELAY)
-                dispatchTouchEvent(webView, iframeInfo)
+                val currentIframe = iframeInfo ?: findIframe(webView) ?: continue
+                dispatchTouchEvent(webView, currentIframe)
                 delay(IFRAME_FIND_DELAY)
                 val solved = waitForVerification(webView)
                 if (solved) return true
